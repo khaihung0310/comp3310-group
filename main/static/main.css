@@ -1,0 +1,39 @@
+body {
+    background-image: url('/static/img/background.jpg');
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+    background-size: cover;
+}
+
+a {
+    text-align: center;
+    display: block;
+    color: #1E40AF;
+}
+
+a:link {
+    color: black;
+    background-color: transparent;
+    text-decoration: none;
+}
+
+#cardstyle .card {
+    margin-right: auto;
+    margin-left: auto;
+    width: 250px;
+    box-shadow: 0 15px 25px rgba(129, 124, 124, 0.2);
+    height: 300px;
+    border-radius: 5px;
+    backdrop-filter: blur(50px);
+    padding: 10px;
+    text-align: center;
+}
+
+#cardstyle .card img {
+    height: 60%;
+}
+
+.tab-space {
+    margin-left: 20px;
+    margin-right: 20px;
+}
