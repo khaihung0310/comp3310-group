@@ -23,6 +23,7 @@ class AuthenticationSecurityTests(TestCase):
     def setUp(self):
         self.user_model = get_user_model()
         self.user = self.user_model.objects.create_user(username="reviewer", password="StrongPass123")
+        self.other_user = self.user_model.objects.create_user(username="other", password="StrongPass123")
         self.staff = self.user_model.objects.create_user(
             username="staff", password="StrongPass123", is_staff=True
         )
@@ -49,6 +50,33 @@ class AuthenticationSecurityTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertIn(reverse("main:login"), response["Location"])
+
+    def test_security_anonymous_user_can_view_login_form(self):
+        """Security requirement: anonymous users can access the login form."""
+        response = self.client.get(reverse("main:login"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Login")
+
+    def test_security_logged_in_user_is_redirected_away_from_login_form(self):
+        """Security requirement: authenticated users must not see the login form again."""
+        self.client.login(username="reviewer", password="StrongPass123")
+        response = self.client.get(reverse("main:login"))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], reverse("main:home"))
+
+    def test_security_logged_in_user_cannot_login_as_another_identity_without_logout(self):
+        """Security requirement: authenticated users cannot switch identity through /login/."""
+        self.client.login(username="reviewer", password="StrongPass123")
+        response = self.client.post(
+            reverse("main:login"),
+            data={"username": "other", "password": "StrongPass123"},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], reverse("main:home"))
+        self.assertEqual(int(self.client.session["_auth_user_id"]), self.user.id)
 
     def test_security_anonymous_user_cannot_post_addmovies(self):
         """Security requirement: anonymous users must not submit Add Movies."""
@@ -271,6 +299,140 @@ class AuthenticationSecurityTests(TestCase):
 
         self.assertEqual(response.status_code, 405)
         self.assertTrue(Review.objects.filter(id=review.id).exists())
+
+    def test_security_anonymous_user_cannot_access_my_reviews(self):
+        """Security requirement: anonymous users are redirected from private review history."""
+        response = self.client.get(reverse("main:my_reviews"))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse("main:login"), response["Location"])
+
+    def test_security_logged_in_user_can_access_my_reviews(self):
+        """Security requirement: authenticated users can access their own review history."""
+        self.client.login(username="reviewer", password="StrongPass123")
+        response = self.client.get(reverse("main:my_reviews"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "My Reviews")
+
+    def test_security_my_reviews_only_shows_request_user_reviews(self):
+        """Security requirement: privacy by design shows only request.user's reviews."""
+        Review.objects.create(movie=self.movie, user=self.user, comment="Own private review", rating=8)
+        Review.objects.create(movie=self.movie, user=self.other_user, comment="Other private review", rating=4)
+        self.client.login(username="reviewer", password="StrongPass123")
+        response = self.client.get(reverse("main:my_reviews"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Own private review")
+        self.assertNotContains(response, "Other private review")
+
+    def test_security_my_reviews_does_not_accept_other_user_id(self):
+        """Security requirement: IDOR prevention ignores user-controlled IDs."""
+        Review.objects.create(movie=self.movie, user=self.other_user, comment="Other user review", rating=4)
+        self.client.login(username="reviewer", password="StrongPass123")
+        response = self.client.get(reverse("main:my_reviews"), {"user_id": self.other_user.id})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "Other user review")
+
+    def test_security_my_reviews_empty_state_renders_safely(self):
+        """Security requirement: empty private review history renders a safe empty state."""
+        self.client.login(username="reviewer", password="StrongPass123")
+        response = self.client.get(reverse("main:my_reviews"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "You have not written any reviews yet.")
+
+    def test_security_anonymous_user_cannot_access_edit_review(self):
+        """Security requirement: anonymous users are redirected from review editing."""
+        review = Review.objects.create(movie=self.movie, user=self.user, comment="Own review", rating=8)
+        response = self.client.get(reverse("main:edit_review", args=[review.id]))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse("main:login"), response["Location"])
+
+    def test_security_user_can_access_edit_form_for_own_review(self):
+        """Security requirement: owners can access the edit form for their own review."""
+        review = Review.objects.create(movie=self.movie, user=self.user, comment="Own review", rating=8)
+        self.client.login(username="reviewer", password="StrongPass123")
+        response = self.client.get(reverse("main:edit_review", args=[review.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Edit Review")
+        self.assertContains(response, "Own review")
+
+    def test_security_user_can_successfully_edit_own_review(self):
+        """Security requirement: owners can update their own review after server-side validation."""
+        review = Review.objects.create(movie=self.movie, user=self.user, comment="Old review", rating=8)
+        self.client.login(username="reviewer", password="StrongPass123")
+        response = self.client.post(
+            reverse("main:edit_review", args=[review.id]),
+            data={"comment": "Updated review", "rating": 9},
+        )
+
+        review.refresh_from_db()
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(review.comment, "Updated review")
+        self.assertEqual(review.rating, 9)
+
+    def test_security_user_cannot_edit_another_users_review(self):
+        """Security requirement: ownership-based authorisation blocks editing another user's review."""
+        review = Review.objects.create(movie=self.movie, user=self.other_user, comment="Other review", rating=4)
+        self.client.login(username="reviewer", password="StrongPass123")
+        response = self.client.post(
+            reverse("main:edit_review", args=[review.id]),
+            data={"comment": "Tampered review", "rating": 10},
+        )
+
+        review.refresh_from_db()
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(review.comment, "Other review")
+        self.assertEqual(review.rating, 4)
+
+    def test_security_invalid_edit_review_id_returns_404(self):
+        """Security requirement: invalid edit review IDs fail securely with 404."""
+        self.client.login(username="reviewer", password="StrongPass123")
+        response = self.client.get(reverse("main:edit_review", args=[99999]))
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_security_invalid_edit_review_form_does_not_update_review(self):
+        """Security requirement: invalid edit input re-renders errors and preserves existing review."""
+        review = Review.objects.create(movie=self.movie, user=self.user, comment="Old review", rating=8)
+        self.client.login(username="reviewer", password="StrongPass123")
+        response = self.client.post(
+            reverse("main:edit_review", args=[review.id]),
+            data={"comment": "", "rating": 999},
+        )
+
+        review.refresh_from_db()
+        self.assertEqual(response.status_code, 200)
+        self.assertFormError(response.context["form"], "comment", "Review comment is required.")
+        self.assertEqual(review.comment, "Old review")
+        self.assertEqual(review.rating, 8)
+
+    def test_security_edited_review_remains_linked_to_original_owner(self):
+        """Security requirement: edit POST cannot change review ownership."""
+        review = Review.objects.create(movie=self.movie, user=self.user, comment="Old review", rating=8)
+        self.client.login(username="reviewer", password="StrongPass123")
+        self.client.post(
+            reverse("main:edit_review", args=[review.id]),
+            data={"comment": "Updated review", "rating": 9, "user": self.other_user.id},
+        )
+
+        review.refresh_from_db()
+        self.assertEqual(review.user, self.user)
+
+    def test_security_edit_link_is_visible_only_for_review_owner(self):
+        """Security requirement: edit links are shown only to the owner of each review."""
+        own_review = Review.objects.create(movie=self.movie, user=self.user, comment="Own review", rating=8)
+        other_review = Review.objects.create(movie=self.movie, user=self.other_user, comment="Other review", rating=4)
+        self.client.login(username="reviewer", password="StrongPass123")
+        response = self.client.get(reverse("main:details", args=[self.movie.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, reverse("main:edit_review", args=[own_review.id]))
+        self.assertNotContains(response, reverse("main:edit_review", args=[other_review.id]))
 
     def test_security_password_requires_length_capital_number_and_special_character(self):
         """Security requirement: passwords need 8 chars, one capital, one number, and one special char."""

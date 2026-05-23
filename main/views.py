@@ -13,6 +13,9 @@ from .models import Movie, Review
 
 class UserLoginView(LoginView):
     template_name = "main/login.html"
+    # Secure coding principle: session clarity. Authenticated users are redirected
+    # away from the login form to prevent accidental identity switching without logout.
+    redirect_authenticated_user = True
 
 
 def register(request):
@@ -103,6 +106,41 @@ def delete_review(request, id):
     movie_id = review.movie_id
     review.delete()
     return redirect("main:details", id=movie_id)
+
+
+@login_required
+def my_reviews(request):
+    # Secure coding principle: server-side access control. Review history requires authentication.
+    # Secure coding principle: privacy by design / data minimisation. Only request.user's reviews are shown.
+    # Secure coding principle: IDOR prevention. No user_id is accepted from URL, query string, or POST data.
+    reviews = Review.objects.filter(user=request.user).select_related("movie").order_by("-id")
+    return render(request, "main/myreviews.html", {"reviews": reviews})
+
+
+@login_required
+def edit_review(request, id):
+    # Secure coding principle: fail securely. Invalid review IDs return 404.
+    review = get_object_or_404(Review.objects.select_related("movie", "user"), id=id)
+
+    # Secure coding principle: ownership-based authorisation and server-side enforcement.
+    # UI visibility is not trusted; only the original owner can edit the review.
+    if review.user != request.user:
+        return HttpResponseForbidden("You can only edit your own reviews.")
+
+    if request.method == "POST":
+        # Secure coding principle: input validation. Rating and comment are validated server-side.
+        form = ReviewForm(request.POST, instance=review)
+        if form.is_valid():
+            updated_review = form.save(commit=False)
+            # Secure coding principle: accountability. Ownership is preserved and never taken from client input.
+            updated_review.user = review.user
+            updated_review.movie = review.movie
+            updated_review.save()
+            return redirect("main:details", id=review.movie_id)
+    else:
+        form = ReviewForm(instance=review)
+
+    return render(request, "main/editreview.html", {"form": form, "review": review})
 
 
 #review

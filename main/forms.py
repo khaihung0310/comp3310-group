@@ -52,6 +52,11 @@ class ReviewForm(forms.ModelForm):
     class Meta:
         model = Review
         fields = ("comment", "rating")
+        error_messages = {
+            "comment": {
+                "required": "Review comment is required.",
+            },
+        }
 
     def clean_comment(self):
         comment = self.cleaned_data.get("comment")

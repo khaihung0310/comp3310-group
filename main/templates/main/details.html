@@ -75,6 +75,9 @@
                                     <h5 class="card-title">{{ review.user|default:"Legacy review" }}</h5>
                                     <p class="card-text">{{ review.comment }}</p>
                                     <p class="card-text"><b>Rating: {{ review.rating }}</b></p>
+                                    {% if user.is_authenticated and review.user == user %}
+                                        <a href="{% url 'main:edit_review' review.id %}" class="btn btn-primary btn-sm d-inline-block">Edit Review</a>
+                                    {% endif %}
                                     {% if user.is_staff %}
                                         <form action="{% url 'main:delete_review' review.id %}" method="POST">
                                             {% csrf_token %}

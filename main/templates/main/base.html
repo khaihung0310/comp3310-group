@@ -76,6 +76,11 @@
                         <a class="nav-link" href="{% url 'main:add_movies' %}">Add Movies</a>
                     </li>
                 {% endif %}
+                {% if user.is_authenticated %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'main:my_reviews' %}">My Reviews</a>
+                    </li>
+                {% endif %}
             </ul>
             <form class="d-flex" method="GET" action="{% url 'main:home' %}">
                 <input class="form-control me-2" type="search" placeholder="Search" aria-label="Search" name="title">
