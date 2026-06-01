@@ -66,8 +66,24 @@ class ReviewForm(forms.ModelForm):
 
 
 class RegisterForm(UserCreationForm):
-    # Require a valid email format.
-    # EmailField applies RFC 5322 syntax validation automatically.
+"""
+    Secure registration form extending Django's built-in UserCreationForm.
+ 
+    SECURE CODING [SC-1] Leveraging Trusted Framework Components:
+        UserCreationForm enforces password confirmation (password1 == password2)
+        and automatically applies every validator listed in AUTH_PASSWORD_VALIDATORS
+        (settings.py), including minimum length and common-password checks.
+        This avoids re-implementing password logic from scratch.
+ 
+    SECURE CODING [SC-2] Input Validation (server-side):
+        All clean_* methods enforce constraints server-side, regardless of any
+        client-side checks, so they cannot be bypassed via direct HTTP requests.
+    """
+
+    """
+    SECURE CODING [SC-3] Require a valid email format.
+    EmailField applies RFC 5322 syntax validation automatically.
+    """
     email = forms.EmailField(
             required=True,
             help_text="A valid email address is required.",
@@ -78,8 +94,11 @@ class RegisterForm(UserCreationForm):
         fields = ("username", "email", "password1", "password2")
 
     def clean_email(self):
-        # Prevents duplicate accounts sharing the same email address.
-        # Duplicate emails can enable account takeover or user enumeration vectors.
+        """
+        SECURE CODING [SC-4] Prevent duplicate accounts sharing the same email.
+        Duplicate emails can enable account-takeover or user-enumeration vectors.
+        This check runs server-side after the field's built-in format validation.
+        """
         email = self.cleaned_data.get("email", "").lower() # normalise to lowercase
         if User.objects.filter(email__iexact=email).exists():
             raise forms.ValidationError(
@@ -88,8 +107,10 @@ class RegisterForm(UserCreationForm):
         return email
 
     def clean_username(self):
-        # Enforce a minimum username length and disallow leading/trailing whitespace
-        # that could cause identity-confusion issues.
+        """
+        SECURE CODING [SC-5] Enforce minimum username length and disallow
+        leading/trailing whitespace that could cause identity-confusion issues.
+        """
         username = self.cleaned_data.get("username", "").strip()
         if len(username) < 3:
             raise forms.ValidationError(
@@ -97,15 +118,23 @@ class RegisterForm(UserCreationForm):
             return username
         
     def save(self, commit=True):
-        # Use create_user() (via super().save()) which calls set_password() internally,
-        # ensuring the password is hashed with PBKDF2+SHA256 before it is ever written
-        # to the database.
+         """
+        SECURE CODING [SC-6] Use create_user() (via super().save()) which calls
+        set_password() internally, ensuring the password is hashed with
+        PBKDF2+SHA256 before it is ever written to the database.
+        Plain-text passwords are never persisted.
+        """
         return super().save(commit=commit)
 
 class LoginForm(AuthenticationForm):
-    # Performs a constant-time password comparison.
-    # issues a generic error message for any failed authentication attempt, and
-    # checks that the account is active before returning a user object.
+    """
+    SECURE CODING [SC-7] Re-use the battle-tested AuthenticationForm rather
+    than writing custom credential-checking logic.  AuthenticationForm already:
+      • performs constant-time password comparison (mitigates timing attacks),
+      • issues a generic error message for any failed authentication attempt
+        (prevents username enumeration), and
+      • checks that the account is active before returning a user object.
+    """
     username = forms.CharField(
         label="Username",
         widget=forms.TextInput(attrs={"autofocus": True}),
