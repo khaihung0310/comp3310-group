@@ -12,7 +12,7 @@ from .models import Movie, Review
 
 
 class UserLoginView(LoginView):
-"""
+    """
     SECURE CODING [SC-12] Redirect Already-Authenticated Users:
     Authenticated users are redirected away from the login form to prevent
     accidental identity switching without an explicit logout first.
@@ -35,7 +35,7 @@ class UserLoginView(LoginView):
     """
 
 def register(request):
-"""
+    """
     SECURE CODING [SC-12] Redirect Already-Authenticated Users:
     Prevents a logged-in user from registering a second account via direct
     URL access, reducing account-confusion risks.
@@ -45,7 +45,9 @@ def register(request):
  
     form = RegisterForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
-    """SECURE CODING [SC-6] Password Hashing:
+    
+        """
+        SECURE CODING [SC-6] Password Hashing:
         form.save() delegates to create_user(), which calls set_password()
         internally. set_password() hashes the raw password with PBKDF2+SHA256
         before any database write. Plain-text passwords are never persisted.
@@ -64,7 +66,7 @@ def register(request):
 
 @require_POST
 def logout(request):
-"""
+    """
     SECURE CODING [SC-18] POST-Only Logout:
     @require_POST ensures logout cannot be triggered by a GET request such
     as an embedded <img> or <a> tag on a third-party page (CSRF via GET).
@@ -78,7 +80,7 @@ def logout(request):
     return redirect("main:home")
 
 def home(request):
-"""
+    """
     SECURE CODING [SC-8] SQL Injection Prevention:
     Movie.objects.filter() uses the Django ORM, which generates parameterised
     SQL. User-supplied search input is never interpolated directly into a
@@ -93,7 +95,7 @@ def home(request):
 
 # detail page
 def details(request, id):
-"""
+    """
     SECURE CODING [SC-9] Fail Securely / No Stack Trace Leakage:
     get_object_or_404() returns a safe 404 response for invalid IDs instead
     of raising an unhandled exception that would expose a Django stack trace
@@ -111,7 +113,7 @@ def details(request, id):
 # add movies to database
 @login_required
 def add_movies(request):
-"""
+    """
     SECURE CODING [SC-20] Principle of Least Privilege / Access Control:
     @login_required rejects unauthenticated requests before the view body runs.
  
@@ -137,9 +139,9 @@ def add_movies(request):
 @login_required
 @require_POST
 def delete_movie(request, id):
-"""
+    """
     SECURE CODING [SC-20a] Role-Based Access Control (server-side):
-    Only staff users can delete movies; enforced server-side regardless of UI.\
+    Only staff users can delete movies; enforced server-side regardless of UI.
     """
     if not request.user.is_staff:
         return HttpResponseForbidden("Only staff users can delete movies.")
@@ -160,7 +162,7 @@ def delete_movie(request, id):
 @login_required
 @require_POST
 def delete_review(request, id):
-"""
+    """
     SECURE CODING [SC-20a] Role-Based Access Control (server-side):
     Only staff users can moderate/delete reviews.
     """
@@ -181,7 +183,7 @@ def delete_review(request, id):
 
 @login_required
 def my_reviews(request):
-"""
+    """
     SECURE CODING [SC-20] Authentication Required:
     @login_required enforces that only authenticated users can view review history.
  
@@ -197,7 +199,7 @@ def my_reviews(request):
 
 @login_required
 def edit_review(request, id):
-"""
+    """
     SECURE CODING [SC-9] Fail Securely:
     Invalid review IDs return 404 instead of an unhandled exception.
     """
@@ -241,7 +243,7 @@ def edit_review(request, id):
 @login_required
 @require_POST
 def add_review(request, id):
-"""
+    """
     SECURE CODING [SC-11] HTTP Method Restriction:
     @require_POST ensures review creation is POST-only.
  
