@@ -18,48 +18,70 @@ class UserLoginView(LoginView):
     redirect_authenticated_user = True
 
 
-def register(request):
+def register_view(request):
+    """
+    User registration view.
+ 
+    SECURE CODING [SC-12] Redirect already-authenticated users:
+        Prevents a logged-in user from registering a second account via direct
+        URL access, reducing account-confusion risks.
+    """
     if request.user.is_authenticated:
         return redirect("main:home")
-
-    form = RegisterForm(request.POST or None)
-    if request.method == "POST" and form.is_valid():
-        user = form.save()
-        auth_login(request, user)
-        return redirect("main:home")
-
+ 
+    if request.method == "POST":
+        form = RegisterForm(request.POST)
+        if form.is_valid():
+            # Password hashing (see forms.py SC-6).
+            # form.save() calls set_password() → PBKDF2+SHA256 hash stored.
+            user = form.save()
+ 
+            # Session Fixation Prevention:
+            #   login() calls cycle_key() which issues a brand-new session ID.
+            #   An attacker who obtained the pre-login session token cannot
+            #   reuse it after the user authenticates.  REF: [3], [5]
+            login(request, user)
+            messages.success(request, "Registration successful. Welcome!")
+            return redirect("main:home")
+        else:
+            # SECURE CODING [SC-14] — Generic failure message:
+            #   Individual field errors are rendered inside the form, but the
+            #   top-level message does not reveal which specific field failed,
+            #   limiting information leakage.
+            messages.error(request, "Registration failed. Please correct the errors below.")
+    else:
+        form = RegisterForm()
+ 
     return render(request, "main/register.html", {"form": form})
 
 
-@require_POST
-def logout(request):
-    auth_logout(request)
-    return redirect("main:home")
-
-
 def home(request):
-    query = request.GET.get("title")
-    allMovies = None
+    """
+    SECURE CODING [SC-8] SQL Injection Prevention:
+        The Django ORM generates parameterised SQL queries; user-supplied
+        search input is never interpolated directly into a query string.
+    """
+    query = request.GET.get("title", "").strip()
     if query:
+        # ORM parameterised query — safe from SQL injection
         allMovies = Movie.objects.filter(name__icontains=query)
     else:
-        allMovies = Movie.objects.all()   # select * from movies
-    #can use ,context dictionary instead {'movies': allMovies}
-    return render(request, 'main/index.html', {'movies': allMovies}) #got error here, instead of using dictionary write in this way
+        allMovies = Movie.objects.all()
+ 
+    return render(request, "main/index.html", {"movies": allMovies})
 
 
 # detail page
 def details(request, id):
-    # Secure coding principle: fail securely. Invalid object IDs return 404 instead of 500.
+    """
+    SECURE CODING [SC-9] Use get_object_or_404 instead of get().
+        A bare .get() raises an unhandled exception that can leak stack-trace
+        information.  get_object_or_404 returns a safe 404 response with no
+        internal details exposed.  REF: [4]
+    """
     movie = get_object_or_404(Movie, id=id)
-    # Retrieve reviews for the specific movie
-    reviews = Review.objects.filter(movie=movie).select_related("user").order_by("-id")
-    reviewed = request.user.is_authenticated and Review.objects.filter(movie=movie, user=request.user).exists()
-    return render(
-        request,
-        'main/details.html',
-        {'movie': movie, 'reviews': reviews, 'reviewed': reviewed, 'form': ReviewForm()},
-    )
+    reviews = Review.objects.filter(movie=movie).order_by("-id")
+    return render(request, "main/details.html", {"movie": movie, "reviews": reviews})
 
 # add movies to database
 @login_required
