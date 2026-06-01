@@ -66,6 +66,51 @@ class ReviewForm(forms.ModelForm):
 
 
 class RegisterForm(UserCreationForm):
+    # Require a valid email format.
+    # EmailField applies RFC 5322 syntax validation automatically.
+    email = forms.EmailField(
+            required=True,
+            help_text="A valid email address is required.",
+    )
+    
     class Meta:
         model = User
-        fields = ("username", "password1", "password2")
+        fields = ("username", "email", "password1", "password2")
+
+    def clean_email(self):
+        # Prevents duplicate accounts sharing the same email address.
+        # Duplicate emails can enable account takeover or user enumeration vectors.
+        email = self.cleaned_data.get("email", "").lower() # normalise to lowercase
+        if User.objects.filter(email__iexact=email).exists():
+            raise forms.ValidationError(
+                "An account with this email already exists."
+            )
+        return email
+
+    def clean_username(self):
+        # Enforce a minimum username length and disallow leading/trailing whitespace
+        # that could cause identity-confusion issues.
+        username = self.cleaned_data.get("username", "").strip()
+        if len(username) < 3:
+            raise forms.ValidationError(
+                "Username must be at least 3 characters long.")
+            return username
+        
+    def save(self, commit=True):
+        # Use create_user() (via super().save()) which calls set_password() internally,
+        # ensuring the password is hashed with PBKDF2+SHA256 before it is ever written
+        # to the database.
+        return super().save(commit=commit)
+
+class LoginForm(AuthenticationForm):
+    # Performs a constant-time password comparison.
+    # issues a generic error message for any failed authentication attempt, and
+    # checks that the account is active before returning a user object.
+    username = forms.CharField(
+        label="Username",
+        widget=forms.TextInput(attrs={"autofocus": True}),
+    )
+    password = forms.CharField(
+        label="Password",
+        widget=forms.PasswordInput(attrs={"autocomplete": "current-password"}),
+    )
