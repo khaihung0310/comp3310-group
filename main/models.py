@@ -14,17 +14,23 @@ class Movie(models.Model):
 
     def __str__(self):
         return self.name
-
+# SECURITY TASK 9:
+# Review ownership and integrity controls are implemented in this model.
+# Reviews are linked to authenticated users and protected by database-level
+# validation and uniqueness constraints.
 class Review(models.Model):
-"""
+  """
     SECURE CODING [SC-9] Referential Integrity / Fail Securely:
     CASCADE ensures that when a Movie is deleted, all associated reviews are
     also deleted, preventing orphaned records that could cause unexpected
     behaviour or information leakage.
     """
-    movie = models.ForeignKey(Movie, on_delete=models.CASCADE)
+  # SECURITY TASK 9:
+# Maintains referential integrity by automatically removing reviews
+# when the associated movie is deleted.
+movie = models.ForeignKey(Movie, on_delete=models.CASCADE)
  
-    """
+"""
     SECURE CODING [SC-21] Accountability / Non-Repudiation:
     Every review is linked to the authenticated user who created it via a
     ForeignKey to AUTH_USER_MODEL. Using settings.AUTH_USER_MODEL rather
@@ -35,43 +41,51 @@ class Review(models.Model):
     on_delete=CASCADE means deleting a user account also removes their
     reviews, preventing de-anonymised review records from persisting after
     an account is removed (privacy by design).
-    """
-    user = models.ForeignKey(
+ """
+# SECURITY TASK 9:
+# Links each review to the authenticated user who created it,
+# supporting accountability and ownership-based authorisation.
+user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         null=True,
         blank=True,
     )
  
-    comment = models.TextField(max_length=1000, null=True)
+comment = models.TextField(max_length=1000, null=True)
  
-    """
+"""
     SECURE CODING [SC-2] Server-Side Input Validation:
     MinValueValidator and MaxValueValidator enforce the rating range (1-10)
     at the database layer, not just the form layer. This means the constraint
     cannot be bypassed by submitting a raw API request that skips form
     validation entirely.
     """
-    rating = models.FloatField(
+# SECURITY TASK 9:
+# Enforces server-side rating validation (1-10) to prevent
+# invalid values being submitted through direct requests.
+rating = models.FloatField(
         default=0,
         validators=[MinValueValidator(1), MaxValueValidator(10)],
     )
- 
-    class Meta:
-    """
+ # SECURITY TASK 9:
+# Database-level protection preventing duplicate reviews
+# by the same user for the same movie.
+class Meta:
+      """
         SECURE CODING [SC-23] Race Condition / Duplicate Submission Prevention:
         UniqueConstraint enforces at the database level that a user can only
         submit one review per movie. Even if two concurrent requests pass the
         application-level duplicate check simultaneously, the database
         constraint ensures only one record is committed, with the second
         raising an IntegrityError caught in views.py.
-        """
-        constraints = [
+     """
+constraints = [
             models.UniqueConstraint(
                 fields=["movie", "user"],
                 name="unique_review_per_user_per_movie",
             ),
         ]
  
-    def __str__(self):
+def __str__(self):
         return self.movie.name
