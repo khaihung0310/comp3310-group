@@ -10,8 +10,9 @@ from .forms import MovieForm, RegisterForm, ReviewForm
 from .models import Movie, Review
 # Create your views here.
 
-
-class UserLoginView(LoginView):
+# SECURITY TASK 7: Uses Django's built-in LoginView for authentication instead of custom password handling.
+# Django handles credential checking, session creation, and safe login failure messages.
+class UserLoginView(LoginView): 
     """
     SECURE CODING [SC-12] Redirect Already-Authenticated Users:
     Authenticated users are redirected away from the login form to prevent
@@ -33,16 +34,26 @@ class UserLoginView(LoginView):
     does not exist OR the password is wrong, so an attacker cannot
     distinguish between the two outcomes.
     """
+    # SECURITY TASK 7: Redirects users who are already logged in away from the login page
+    # to reduce accidental session/account confusion.
+template_name = "main/login.html"
+redirect_authenticated_user = True
 
+# SECURITY TASK 7: Registration uses Django form validation and built-in password hashing.
+# Passwords are never manually stored or saved in plain text.
 def register(request):
     """
     SECURE CODING [SC-12] Redirect Already-Authenticated Users:
     Prevents a logged-in user from registering a second account via direct
     URL access, reducing account-confusion risks.
     """
+    # SECURITY TASK 7: Prevents already-authenticated users from creating another account
+    # without intentionally logging out first.
     if request.user.is_authenticated:
         return redirect("main:home")
  
+ # SECURITY TASK 7: Validates registration input, including custom password rules,
+ # before creating the user account.
     form = RegisterForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
     
@@ -52,6 +63,9 @@ def register(request):
         internally. set_password() hashes the raw password with PBKDF2+SHA256
         before any database write. Plain-text passwords are never persisted.
         """
+
+        # SECURITY TASK 7: form.save() uses Django's user creation process,
+        # which hashes the password before writing it to the database.
         user = form.save()
  
         """
@@ -59,11 +73,15 @@ def register(request):
         auth_login() calls session.cycle_key(), issuing a new session ID so
         a pre-registration token cannot be reused.
         """
+        # SECURITY TASK 7: Starts an authenticated session using Django's session framework
+        # instead of manually creating session cookies.
         auth_login(request, user)
         return redirect("main:home")
  
     return render(request, "main/register.html", {"form": form})
 
+# SECURITY TASK 7: Logout is restricted to POST requests so it cannot be triggered
+# accidentally through a normal link or image request.  
 @require_POST
 def logout(request):
     """
@@ -76,6 +94,7 @@ def logout(request):
     session record and issues a new empty cookie, fully invalidating the
     old token so it cannot be replayed.
     """
+    # SECURITY TASK 7: Clears the authenticated session so the old session cannot be reused.
     auth_logout(request)
     return redirect("main:home")
 
@@ -111,6 +130,7 @@ def details(request, id):
     )
     
 # add movies to database
+# SECURITY TASK 7/9: Requires login before accessing movie-management functionality.
 @login_required
 def add_movies(request):
     """
@@ -122,6 +142,9 @@ def add_movies(request):
     enforced server-side so a non-staff user cannot bypass it by crafting a
     direct HTTP request.
     """
+
+# SECURITY TASK 7/9: Enforces admin/staff permissions server-side.
+# This prevents users bypassing hidden UI controls by directly visiting the URL.
     if not request.user.is_staff:
         return HttpResponseForbidden("Only staff users can add movies.")
  
@@ -134,7 +157,6 @@ def add_movies(request):
         form = MovieForm()
  
     return render(request, 'main/addmovies.html', {"form": form})
-
 
 @login_required
 @require_POST
@@ -180,7 +202,7 @@ def delete_review(request, id):
     review.delete()
     return redirect("main:details", id=movie_id)
 
-
+# SECURITY TASK 9: Requires authentication before showing review history.
 @login_required
 def my_reviews(request):
     """
@@ -193,10 +215,11 @@ def my_reviews(request):
     string, or POST data, so a user cannot view another user's review history
     by manipulating the request.
     """
+    # SECURITY TASK 9: Filters reviews by request.user so users cannot view another user's history.
     reviews = Review.objects.filter(user=request.user).select_related("movie").order_by("-id")
     return render(request, "main/myreviews.html", {"reviews": reviews})
 
-
+# SECURITY TASK 9: Requires authentication before review editing.
 @login_required
 def edit_review(request, id):
     """
@@ -211,6 +234,7 @@ def edit_review(request, id):
     button is not trusted; a user who crafts a direct request to another
     user's review ID receives a 403 Forbidden response.
     """
+    # SECURITY TASK 9: Prevents IDOR by checking ownership before allowing review edits.
     if review.user != request.user:
         return HttpResponseForbidden("You can only edit your own reviews.")
  
@@ -239,7 +263,7 @@ def edit_review(request, id):
  
     return render(request, "main/editreview.html", {"form": form, "review": review})
 
-
+# SECURITY TASK 7/9: Requires login and POST-only submission for review creation.
 @login_required
 @require_POST
 def add_review(request, id):
@@ -250,6 +274,8 @@ def add_review(request, id):
     SECURE CODING [SC-9] Fail Securely:
     Invalid movie IDs return 404 instead of an unhandled exception.
     """
+
+    # SECURITY TASK 7/9: Fails safely with a 404 instead of exposing an unhandled server error.
     movie = get_object_or_404(Movie, id=id)
     form = ReviewForm(request.POST)
  
@@ -265,6 +291,9 @@ def add_review(request, id):
         sourced from the server-side session. The submitted POST body is
         never trusted for the user value.
         """
+
+        # SECURITY TASK 9: Links the review to the authenticated user from the server-side session.
+        # The user value is never accepted from the POST body.
         data.user = request.user
  
         """
