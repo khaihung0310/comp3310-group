@@ -1,3 +1,10 @@
+# SECURITY TASK 7 & TASK 9
+# Security-focused test suite used to validate authentication,
+# authorisation, input validation, CSRF protection, access control,
+# review ownership, and administrative permissions.
+# Each test is mapped to a specific security requirement and verifies
+# that the implemented controls behave as expected.
+
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
@@ -18,7 +25,9 @@ def _copy_django_context_for_python_314(self):
 # Test harness compatibility: Django 4.1's BaseContext.__copy__ is not compatible with Python 3.14.
 BaseContext.__copy__ = _copy_django_context_for_python_314
 
-
+# SECURITY TASK 7:
+# Tests authentication and authorisation requirements including login,
+# logout, password validation, session handling, and access control.
 class AuthenticationSecurityTests(TestCase):
     def setUp(self):
         self.user_model = get_user_model()
@@ -131,7 +140,10 @@ class AuthenticationSecurityTests(TestCase):
         )
 
         self.assertEqual(Review.objects.get().user, self.user)
-
+# SECURITY TASK 7/9:
+# Verifies the application fails securely by returning HTTP 404
+# for invalid object identifiers instead of exposing internal
+# application errors or stack traces.
     def test_security_invalid_movie_id_returns_404_not_500(self):
         """Security requirement: invalid object IDs fail securely."""
         self.client.login(username="reviewer", password="StrongPass123")
@@ -210,7 +222,10 @@ class AuthenticationSecurityTests(TestCase):
 
         self.assertEqual(response.status_code, 403)
         self.assertFalse(Movie.objects.filter(name="New Movie").exists())
-
+# SECURITY TASK 7/9:
+# Verifies review creation is restricted to POST requests.
+# HTTP 405 prevents state-changing actions from being executed
+# through unintended request methods.
     def test_security_get_to_addreview_does_not_create_review(self):
         """Security requirement: review creation is method-restricted to POST."""
         self.client.login(username="reviewer", password="StrongPass123")
@@ -233,7 +248,8 @@ class AuthenticationSecurityTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(Review.objects.filter(movie=self.movie, user=self.user).count(), 1)
-
+# SECURITY TASK 9:
+# Verifies administrator-only access control for movie deletion.
     def test_security_anonymous_user_cannot_delete_movie(self):
         """Security requirement: anonymous users must not delete movies."""
         response = self.client.post(reverse("main:delete_movie", args=[self.movie.id]))
@@ -248,7 +264,10 @@ class AuthenticationSecurityTests(TestCase):
 
         self.assertEqual(response.status_code, 403)
         self.assertTrue(Movie.objects.filter(id=self.movie.id).exists())
-
+# SECURITY TASK 9:
+# Verifies movie deletion is restricted to POST requests.
+# HTTP 405 helps protect against accidental or malicious
+# deletion attempts using GET requests.
     def test_security_staff_user_can_delete_movie(self):
         """Security requirement: staff/admin users can delete movies."""
         self.client.login(username="staff", password="StrongPass123")
@@ -264,7 +283,8 @@ class AuthenticationSecurityTests(TestCase):
 
         self.assertEqual(response.status_code, 405)
         self.assertTrue(Movie.objects.filter(id=self.movie.id).exists())
-
+# SECURITY TASK 9:
+# Verifies administrator-only review moderation and deletion controls.
     def test_security_anonymous_user_cannot_delete_review(self):
         """Security requirement: anonymous users must not delete reviews."""
         review = Review.objects.create(movie=self.movie, user=self.user, comment="Bad", rating=1)
@@ -290,7 +310,9 @@ class AuthenticationSecurityTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertFalse(Review.objects.filter(id=review.id).exists())
-
+# SECURITY TASK 9:
+# Verifies review deletion is restricted to POST requests.
+# HTTP 405 enforces method restrictions and supports CSRF protection.
     def test_security_get_to_delete_review_does_not_delete_review(self):
         """Security requirement: review deletion is method-restricted to POST."""
         review = Review.objects.create(movie=self.movie, user=self.user, comment="Bad", rating=1)
@@ -299,7 +321,9 @@ class AuthenticationSecurityTests(TestCase):
 
         self.assertEqual(response.status_code, 405)
         self.assertTrue(Review.objects.filter(id=review.id).exists())
-
+# SECURITY TASK 9:
+# Verifies review-history privacy controls and ensures users can only
+# access their own review information.
     def test_security_anonymous_user_cannot_access_my_reviews(self):
         """Security requirement: anonymous users are redirected from private review history."""
         response = self.client.get(reverse("main:my_reviews"))
@@ -342,7 +366,9 @@ class AuthenticationSecurityTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "You have not written any reviews yet.")
-
+# SECURITY TASK 9:
+# Verifies ownership-based authorisation and IDOR prevention
+# for review editing functionality.
     def test_security_anonymous_user_cannot_access_edit_review(self):
         """Security requirement: anonymous users are redirected from review editing."""
         review = Review.objects.create(movie=self.movie, user=self.user, comment="Own review", rating=8)
@@ -433,7 +459,8 @@ class AuthenticationSecurityTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, reverse("main:edit_review", args=[own_review.id]))
         self.assertNotContains(response, reverse("main:edit_review", args=[other_review.id]))
-
+# SECURITY TASK 7:
+# Verifies custom password-strength requirements are enforced server-side.
     def test_security_password_requires_length_capital_number_and_special_character(self):
         """Security requirement: passwords need 8 chars, one capital, one number, and one special char."""
         invalid_passwords = ["A1!", "password1!", "Password!", "Password1"]
